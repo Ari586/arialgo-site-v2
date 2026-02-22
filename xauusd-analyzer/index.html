@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Multi-Asset Pro Analyzer — Real-Time Trading</title>
+  <meta name="description"
+    content="Professional real-time trading analyzer for XAUUSD, BTCUSD, ETHUSD with AI-powered signals" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap"
+    rel="stylesheet" />
+  <link rel="stylesheet" href="/src/style.css" />
+</head>
+
+<body>
+  <!-- Top Bar -->
+  <header class="top-bar">
+    <div class="logo">
+      <span class="logo-icon">⚡</span>
+      <span class="logo-text">TRADING<span class="gold"> PRO</span></span>
+    </div>
+    <!-- INSTRUMENT SELECTOR -->
+    <div class="instrument-selector" id="instrumentSelector">
+      <button class="inst-btn active" data-symbol="XAU/USD" data-icon="🥇" data-name="Gold">
+        <span class="inst-icon">🥇</span><span class="inst-name">XAU/USD</span>
+      </button>
+      <button class="inst-btn" data-symbol="BTC/USD" data-icon="₿" data-name="Bitcoin">
+        <span class="inst-icon">₿</span><span class="inst-name">BTC/USD</span>
+      </button>
+      <button class="inst-btn" data-symbol="ETH/USD" data-icon="Ξ" data-name="Ethereum">
+        <span class="inst-icon">Ξ</span><span class="inst-name">ETH/USD</span>
+      </button>
+    </div>
+    <div class="price-ticker" id="priceTicker">
+      <div class="ticker-label" id="tickerLabel">XAU/USD</div>
+      <div class="ticker-price" id="currentPrice">—</div>
+      <div class="ticker-change" id="priceChange">—</div>
+    </div>
+
+    <!-- TREND DIRECTION -->
+    <div class="trend-badge" id="trendBadge">
+      <div class="trend-direction" id="trendDirection">⏳ LOADING</div>
+      <div class="trend-strength" id="trendStrength">—</div>
+    </div>
+    <div class="top-bar-right">
+      <div class="data-source" id="dataSource">
+        <span class="dot"></span>
+        <span class="source-text">Connecting...</span>
+      </div>
+      <div class="timestamp" id="timestamp">—</div>
+    </div>
+  </header>
+
+  <!-- Main Dashboard -->
+  <main class="dashboard">
+    <!-- Left: Chart -->
+    <section class="chart-section">
+      <div class="card chart-card">
+        <div class="card-header">
+          <h2>📊 Live Chart <span class="chart-lib-badge">TradingView</span></h2>
+          <div class="candle-countdown" id="candleCountdown">
+            <span class="countdown-label">🕐 Bougie</span>
+            <span class="countdown-timer" id="countdownTimer">00:00</span>
+          </div>
+          <div class="timeframe-selector" id="timeframeSelector">
+            <button class="tf-btn active" data-tf="1min">1M</button>
+            <button class="tf-btn" data-tf="5min">5M</button>
+            <button class="tf-btn" data-tf="15min">15M</button>
+            <button class="tf-btn" data-tf="1h">1H</button>
+            <button class="tf-btn" data-tf="4h">4H</button>
+          </div>
+        </div>
+        <div id="chartContainer" class="chart-container"></div>
+      </div>
+
+      <!-- Trend Analysis Bar -->
+      <div class="card trend-card">
+        <div class="card-header">
+          <h2>📊 Tendance Générale</h2>
+        </div>
+        <div class="trend-analysis">
+          <div class="trend-meters">
+            <div class="trend-meter bullish-meter">
+              <span class="meter-label">🟢 HAUSSIER</span>
+              <div class="meter-bar">
+                <div class="meter-fill bullish-fill" id="bullishFill"></div>
+              </div>
+              <span class="meter-value" id="bullishPct">—%</span>
+            </div>
+            <div class="trend-meter bearish-meter">
+              <span class="meter-label">🔴 BAISSIER</span>
+              <div class="meter-bar">
+                <div class="meter-fill bearish-fill" id="bearishFill"></div>
+              </div>
+              <span class="meter-value" id="bearishPct">—%</span>
+            </div>
+          </div>
+          <div class="trend-reasons" id="trendReasons">—</div>
+        </div>
+      </div>
+
+      <!-- Candlestick Patterns -->
+      <div class="card patterns-card">
+        <div class="card-header">
+          <h2>🕯️ Patterns Détectés</h2>
+        </div>
+        <div class="patterns-list" id="patternsList">Analyse en cours...</div>
+      </div>
+
+      <!-- NEWS SENTIMENT PANEL -->
+      <div class="card news-card">
+        <div class="card-header">
+          <h2>📰 News & Sentiment</h2>
+          <a href="https://fr.tradingview.com/news/#news_markets" target="_blank" rel="noopener" class="tv-news-link"
+            title="Voir les news sur TradingView">
+            <span
+              style="font-size:12px; color:#2962FF; font-weight:600; text-decoration:none; display:flex; align-items:center; gap:4px;">
+              📺 TradingView News ↗
+            </span>
+          </a>
+          <div class="news-sentiment-badge" id="newsSentimentBadge">
+            <span class="news-sentiment-icon" id="newsSentimentIcon">⏳</span>
+            <span class="news-sentiment-text" id="newsSentimentText">Loading...</span>
+          </div>
+        </div>
+        <div class="news-sentiment-bar">
+          <div class="news-meter">
+            <span class="news-meter-label">🟢 Bullish</span>
+            <div class="meter-bar">
+              <div class="meter-fill bullish-fill" id="newsBullFill" style="width:0%"></div>
+            </div>
+            <span class="news-meter-value" id="newsBullCount">0</span>
+          </div>
+          <div class="news-meter">
+            <span class="news-meter-label">🔴 Bearish</span>
+            <div class="meter-bar">
+              <div class="meter-fill bearish-fill" id="newsBearFill" style="width:0%"></div>
+            </div>
+            <span class="news-meter-value" id="newsBearCount">0</span>
+          </div>
+        </div>
+        <div class="news-feed" id="newsFeed">
+          <div class="news-loading">Chargement des actualités...</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Right: Panels -->
+    <aside class="panels">
+      <!-- Signal Panel -->
+      <div class="card signal-card" id="signalCard">
+        <div class="card-header">
+          <h2>🤖 AI Signal</h2>
+          <div class="ai-badge" id="aiBadge">Ollama</div>
+        </div>
+        <div class="signal-display">
+          <div class="signal-icon" id="signalIcon">⏳</div>
+          <div class="signal-text" id="signalText">ANALYZING</div>
+          <div class="signal-confidence">
+            <div class="confidence-bar">
+              <div class="confidence-fill" id="confidenceFill"></div>
+            </div>
+            <span class="confidence-value" id="confidenceValue">—%</span>
+          </div>
+        </div>
+        <div class="signal-reasoning" id="signalReasoning">
+          Waiting for market data...
+        </div>
+        <div class="trade-levels" id="tradeLevels" style="display: none;">
+          <div class="level-box entry-level">
+            <span class="level-label">ENTRY</span>
+            <span class="level-value" id="entryValue">—</span>
+          </div>
+          <div class="level-box tp-level">
+            <span class="level-label">TAKE PROFIT</span>
+            <span class="level-value" id="tpValue">—</span>
+          </div>
+          <div class="level-box sl-level">
+            <span class="level-label">STOP LOSS</span>
+            <span class="level-value" id="slValue">—</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ALL Indicators Panel -->
+      <div class="card indicators-card">
+        <div class="card-header">
+          <h2>📈 Tous les Indicateurs</h2>
+        </div>
+        <div class="indicators-grid">
+          <div class="indicator-item">
+            <div class="ind-label">RSI (14)</div>
+            <div class="ind-value" id="rsiValue">—</div>
+            <div class="ind-bar">
+              <div class="ind-fill rsi-fill" id="rsiFill"></div>
+            </div>
+            <div class="ind-signal" id="rsiSignal">—</div>
+          </div>
+          <div class="indicator-item">
+            <div class="ind-label">MACD</div>
+            <div class="ind-value" id="macdValue">—</div>
+            <div class="ind-bar">
+              <div class="ind-fill macd-fill" id="macdFill"></div>
+            </div>
+            <div class="ind-signal" id="macdSignal">—</div>
+          </div>
+          <div class="indicator-item">
+            <div class="ind-label">EMA 9/21</div>
+            <div class="ind-value" id="emaValue">—</div>
+            <div class="ind-bar">
+              <div class="ind-fill ema-fill" id="emaFill"></div>
+            </div>
+            <div class="ind-signal" id="emaSignal">—</div>
+          </div>
+          <div class="indicator-item">
+            <div class="ind-label">EMA 50/200</div>
+            <div class="ind-value" id="ema50Value">—</div>
+            <div class="ind-bar">
+              <div class="ind-fill ema-fill" id="ema50Fill"></div>
+            </div>
+            <div class="ind-signal" id="ema50Signal">—</div>
+          </div>
+          <div class="indicator-item">
+            <div class="ind-label">Bollinger</div>
+            <div class="ind-value" id="bbValue">—</div>
+            <div class="ind-bar">
+              <div class="ind-fill bb-fill" id="bbFill"></div>
+            </div>
+            <div class="ind-signal" id="bbSignal">—</div>
+          </div>
+          <div class="indicator-item">
+            <div class="ind-label">ATR (14)</div>
+            <div class="ind-value" id="atrValue">—</div>
+            <div class="ind-bar">
+              <div class="ind-fill atr-fill" id="atrFill"></div>
+            </div>
+            <div class="ind-signal" id="atrSignal">—</div>
+          </div>
+          <div class="indicator-item">
+            <div class="ind-label">Stochastic</div>
+            <div class="ind-value" id="stochValue">—</div>
+            <div class="ind-bar">
+              <div class="ind-fill stoch-fill" id="stochFill"></div>
+            </div>
+            <div class="ind-signal" id="stochSignal">—</div>
+          </div>
+          <div class="indicator-item">
+            <div class="ind-label">ADX</div>
+            <div class="ind-value" id="adxValue">—</div>
+            <div class="ind-bar">
+              <div class="ind-fill adx-fill" id="adxFill"></div>
+            </div>
+            <div class="ind-signal" id="adxSignal">—</div>
+          </div>
+          <div class="indicator-item">
+            <div class="ind-label">Williams %R</div>
+            <div class="ind-value" id="willrValue">—</div>
+            <div class="ind-bar">
+              <div class="ind-fill willr-fill" id="willrFill"></div>
+            </div>
+            <div class="ind-signal" id="willrSignal">—</div>
+          </div>
+          <div class="indicator-item">
+            <div class="ind-label">CCI (20)</div>
+            <div class="ind-value" id="cciValue">—</div>
+            <div class="ind-bar">
+              <div class="ind-fill cci-fill" id="cciFill"></div>
+            </div>
+            <div class="ind-signal" id="cciSignal">—</div>
+          </div>
+          <div class="indicator-item">
+            <div class="ind-label">MFI (14)</div>
+            <div class="ind-value" id="mfiValue">—</div>
+            <div class="ind-bar">
+              <div class="ind-fill mfi-fill" id="mfiFill"></div>
+            </div>
+            <div class="ind-signal" id="mfiSignal">—</div>
+          </div>
+          <div class="indicator-item">
+            <div class="ind-label">VWAP</div>
+            <div class="ind-value" id="vwapValue">—</div>
+            <div class="ind-bar">
+              <div class="ind-fill vwap-fill" id="vwapFill"></div>
+            </div>
+            <div class="ind-signal" id="vwapSignal">—</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Composite Score -->
+      <div class="card score-card">
+        <div class="card-header">
+          <h2>🎯 Score Composite</h2>
+        </div>
+        <div class="score-display">
+          <div class="score-gauge">
+            <svg viewBox="0 0 200 120" class="gauge-svg">
+              <path d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="#1a1a2e" stroke-width="12"
+                stroke-linecap="round" />
+              <path d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="url(#gaugeGradient)" stroke-width="12"
+                stroke-linecap="round" id="gaugeArc" stroke-dasharray="251.2" stroke-dashoffset="125.6" />
+              <defs>
+                <linearGradient id="gaugeGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                  <stop offset="0%" stop-color="#ff4444" />
+                  <stop offset="50%" stop-color="#888" />
+                  <stop offset="100%" stop-color="#00e676" />
+                </linearGradient>
+              </defs>
+              <text x="100" y="90" text-anchor="middle" class="gauge-text" id="gaugeText">0</text>
+              <text x="20" y="115" text-anchor="start" class="gauge-label-text">SELL</text>
+              <text x="180" y="115" text-anchor="end" class="gauge-label-text">BUY</text>
+            </svg>
+          </div>
+        </div>
+      </div>
+
+      <!-- Pivot Points -->
+      <div class="card pivot-card">
+        <div class="card-header">
+          <h2>📐 Pivot Points</h2>
+        </div>
+        <div class="pivot-grid">
+          <div class="pivot-item resistance"><span>R3</span><span id="pivotR3">—</span></div>
+          <div class="pivot-item resistance"><span>R2</span><span id="pivotR2">—</span></div>
+          <div class="pivot-item resistance"><span>R1</span><span id="pivotR1">—</span></div>
+          <div class="pivot-item pivot-main"><span>Pivot</span><span id="pivotP">—</span></div>
+          <div class="pivot-item support"><span>S1</span><span id="pivotS1">—</span></div>
+          <div class="pivot-item support"><span>S2</span><span id="pivotS2">—</span></div>
+          <div class="pivot-item support"><span>S3</span><span id="pivotS3">—</span></div>
+        </div>
+      </div>
+
+      <!-- Market Info -->
+      <div class="card info-card">
+        <div class="card-header">
+          <h2>📋 Market Info</h2>
+        </div>
+        <div class="info-grid">
+          <div class="info-item"><span class="info-label">Bid</span><span class="info-val" id="bidPrice">—</span></div>
+          <div class="info-item"><span class="info-label">Ask</span><span class="info-val" id="askPrice">—</span></div>
+          <div class="info-item"><span class="info-label">Spread</span><span class="info-val" id="spreadVal">—</span>
+          </div>
+          <div class="info-item"><span class="info-label">Day High</span><span class="info-val" id="dayHigh">—</span>
+          </div>
+          <div class="info-item"><span class="info-label">Day Low</span><span class="info-val" id="dayLow">—</span>
+          </div>
+          <div class="info-item"><span class="info-label">VWAP</span><span class="info-val" id="vwapInfo">—</span></div>
+        </div>
+      </div>
+
+      <!-- Multi-Timeframe Confluence -->
+      <div class="card mtf-card">
+        <div class="card-header">
+          <h2>⏱️ Multi-Timeframe</h2>
+          <div class="mtf-consensus" id="mtfConsensus">—</div>
+        </div>
+        <div class="mtf-grid" id="mtfGrid">
+          <div class="mtf-row mtf-header">
+            <span>TF</span><span>RSI</span><span>Trend</span><span>Signal</span>
+          </div>
+          <div class="mtf-row" id="mtf-1min"><span>1M</span><span>—</span><span>—</span><span>—</span></div>
+          <div class="mtf-row" id="mtf-5min"><span>5M</span><span>—</span><span>—</span><span>—</span></div>
+          <div class="mtf-row" id="mtf-15min"><span>15M</span><span>—</span><span>—</span><span>—</span></div>
+          <div class="mtf-row" id="mtf-1h"><span>1H</span><span>—</span><span>—</span><span>—</span></div>
+        </div>
+      </div>
+
+      <!-- Binance Orderbook -->
+      <div class="card orderbook-card">
+        <div class="card-header">
+          <h2>📋 Orderbook</h2>
+          <div class="ob-pressure" id="obPressure">—</div>
+        </div>
+        <div class="orderbook-table" id="orderbookTable">
+          <div class="ob-header"><span>Prix</span><span>Qty</span><span>Total</span></div>
+          <div class="ob-asks" id="obAsks"></div>
+          <div class="ob-spread-row" id="obSpreadRow">Spread: —</div>
+          <div class="ob-bids" id="obBids"></div>
+        </div>
+      </div>
+
+      <!-- Signal History -->
+      <div class="card history-card">
+        <div class="card-header">
+          <h2>📜 Historique Signaux</h2>
+          <div class="win-rate-badge" id="winRateBadge">—%</div>
+        </div>
+        <div class="signal-stats" id="signalStats">
+          <span class="stat-item"><span class="stat-label">Total:</span> <span id="statTotal">0</span></span>
+          <span class="stat-item win"><span class="stat-label">Win:</span> <span id="statWins">0</span></span>
+          <span class="stat-item loss"><span class="stat-label">Loss:</span> <span id="statLosses">0</span></span>
+        </div>
+        <div class="signal-history-list" id="signalHistoryList">
+          <div class="history-loading">Chargement...</div>
+        </div>
+      </div>
+    </aside>
+  </main>
+
+  <footer class="disclaimer">
+    ⚠️ Outil éducatif uniquement. Ce n'est pas un conseil financier. Gérez toujours votre risque.
+  </footer>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+
+</html>

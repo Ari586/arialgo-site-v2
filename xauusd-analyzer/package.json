@@ -1,0 +1,25 @@
+{
+  "name": "xauusd-analyzer",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "start": "node server.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "cors": "^2.8.6",
+    "dotenv": "^17.3.1",
+    "express": "^5.2.1",
+    "lightweight-charts": "^5.1.0",
+    "node-fetch": "^3.3.2",
+    "vite": "^7.3.1",
+    "ws": "^8.19.0"
+  }
+}
