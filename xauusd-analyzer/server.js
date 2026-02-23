@@ -560,7 +560,8 @@ async function fetchBinanceHistory(symbol, interval = '1min', outputsize = 200) 
 // ============================================================
 //  KRAKEN API — Good for XAU/USD + crypto (free, no key)
 // ============================================================
-const krakenSymbols = { 'XAU/USD': 'XAUXUSD', 'BTC/USD': 'XXBTZUSD', 'ETH/USD': 'XETHZUSD' };
+// Kraken uses XAUTUSD for Tether Gold (XAU exposure in USD).
+const krakenSymbols = { 'XAU/USD': 'XAUTUSD', 'BTC/USD': 'XXBTZUSD', 'ETH/USD': 'XETHZUSD' };
 
 async function fetchKrakenTick(symbol) {
     const krakenPair = krakenSymbols[symbol];
