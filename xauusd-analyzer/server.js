@@ -807,9 +807,9 @@ app.get('/api/price', async (req, res) => {
         sources.push(() => fetchKrakenTick(symbol));
         sources.push(() => fetchCryptoTick(symbol));
     } else {
-        // XAU/USD: TradingView → Swissquote → Yahoo
-        sources.push(() => fetchTradingViewXauTick(symbol));
+        // XAU/USD: Swissquote (fast tick) → TradingView (Capital/OANDA) → Yahoo
         sources.push(() => fetchSwissquoteTick(symbol));
+        sources.push(() => fetchTradingViewXauTick(symbol));
     }
 
     // Try each source in order
@@ -2362,8 +2362,8 @@ async function streamPrices() {
                 sources.push(() => fetchKrakenTick(symbol));
                 sources.push(() => fetchCryptoTick(symbol));
             } else {
-                sources.push(() => fetchTradingViewXauTick(symbol));
                 sources.push(() => fetchSwissquoteTick(symbol));
+                sources.push(() => fetchTradingViewXauTick(symbol));
             }
 
             for (const fn of sources) {
@@ -2453,7 +2453,7 @@ async function streamNews() {
 }
 
 // Start streaming intervals
-setInterval(streamPrices, 3000);
+setInterval(streamPrices, 2000);
 setInterval(streamOrderbook, 5000);
 setInterval(streamNews, 60000); // Check news every minute
 

@@ -3,7 +3,7 @@ import { MarketState } from '../types/market';
 
 export const useMarketStore = create<MarketState>((set) => ({
     currentSymbol: 'BTC/USD',
-    currentTimeframe: '15min',
+    currentTimeframe: '1min',
     instruments: [],
     prices: {},
     orderbook: null,

@@ -51,6 +51,8 @@ export default function Chart() {
         queryKey: ['history', currentSymbol, currentTimeframe],
         queryFn: () => fetchHistory(currentSymbol, currentTimeframe),
         staleTime: 60000,
+        refetchInterval: 8000,
+        refetchIntervalInBackground: true,
     });
 
     const indicators = useMemo(() => {

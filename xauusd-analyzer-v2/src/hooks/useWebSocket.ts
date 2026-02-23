@@ -83,5 +83,36 @@ export function useWebSocket() {
         }
     }, [currentSymbol, updateOrderbook]);
 
+    // HTTP fallback polling for price updates (important when WS is unstable via tunnel).
+    useEffect(() => {
+        let cancelled = false;
+        let timer: number | null = null;
+
+        const poll = async () => {
+            try {
+                const res = await fetch(`/api/price?symbol=${encodeURIComponent(currentSymbol)}`);
+                const data = await res.json();
+                if (!cancelled && data?.success && typeof data.price === 'number') {
+                    updatePrice(currentSymbol, data.price);
+                }
+            } catch {
+                // Silent fallback polling: WS may recover.
+            } finally {
+                if (cancelled) return;
+                const nextMs = status === 'connected' ? 9000 : 2500;
+                timer = window.setTimeout(poll, nextMs);
+            }
+        };
+
+        poll();
+
+        return () => {
+            cancelled = true;
+            if (timer !== null) {
+                clearTimeout(timer);
+            }
+        };
+    }, [currentSymbol, status, updatePrice]);
+
     return status;
 }
