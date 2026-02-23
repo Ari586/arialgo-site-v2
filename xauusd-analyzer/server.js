@@ -350,8 +350,23 @@ async function fetchSwissquoteTick(symbol) {
     return null;
 }
 
-// TradingView scanner fallback for XAU/USD (spot brokers)
-const tradingViewXauTickers = ['OANDA:XAUUSD', 'FX_IDC:XAUUSD', 'TVC:GOLD'];
+// TradingView scanner fallback for XAU/USD (prefer Capital.com when available).
+const tradingViewXauTickers = [
+    'CAPITALCOM:GOLD',
+    'CAPITALCOM:XAUUSD',
+    'CAPITALCOM:GOLDSPOT',
+    'OANDA:XAUUSD',
+    'FX_IDC:XAUUSD',
+    'TVC:GOLD'
+];
+const tradingViewXauPreferred = [
+    'CAPITALCOM:GOLD',
+    'CAPITALCOM:XAUUSD',
+    'CAPITALCOM:GOLDSPOT',
+    'OANDA:XAUUSD',
+    'FX_IDC:XAUUSD',
+    'TVC:GOLD'
+];
 const TRADINGVIEW_CACHE_MS = 5000;
 const tradingViewCache = {};
 
@@ -387,7 +402,9 @@ async function fetchTradingViewXauTick(symbol) {
             const rows = Array.isArray(data?.data) ? data.data : [];
             if (rows.length === 0) continue;
 
-            const preferred = rows.find(r => r?.s === 'OANDA:XAUUSD') || rows[0];
+            const preferred = tradingViewXauPreferred
+                .map(ticker => rows.find(r => r?.s === ticker))
+                .find(Boolean) || rows[0];
             const d = Array.isArray(preferred?.d) ? preferred.d : [];
             const price = Number(d[0]);
             if (!Number.isFinite(price) || price <= 0) continue;
@@ -1220,6 +1237,219 @@ function evaluateStrictComboRules(indicators, currentPrice) {
     const summary = `Strict filter -> BUY ${buy.passCount}/6 | SELL ${sell.passCount}/6`;
     return { available: true, score: comboScore, signal, summary, buy, sell };
 }
+
+function evaluateScalp3mPrediction(indicators = {}, candles = [], currentPrice = 0, symbol = 'XAU/USD') {
+    const n = (value) => {
+        const parsed = Number(value);
+        return Number.isFinite(parsed) ? parsed : null;
+    };
+    const safePrice = Math.max(toNum(currentPrice, 0), 0);
+    const atr = Math.max(toNum(indicators?.atr, safePrice * 0.0012), safePrice * 0.0008);
+    let score = 0;
+    const reasons = [];
+
+    const add = (points, text) => {
+        if (!points || !Number.isFinite(points)) return;
+        score += points;
+        reasons.push({ points, text });
+    };
+
+    const ema9 = n(indicators?.ema9);
+    const ema21 = n(indicators?.ema21);
+    if (ema9 !== null && ema21 !== null) {
+        const trendBull = ema9 > ema21;
+        add(trendBull ? 18 : -18, trendBull ? 'EMA 9 > EMA 21 (momentum acheteur)' : 'EMA 9 < EMA 21 (momentum vendeur)');
+    }
+    if (ema9 !== null) {
+        add(safePrice > ema9 ? 8 : -8, safePrice > ema9 ? 'Prix au-dessus EMA 9' : 'Prix sous EMA 9');
+    }
+
+    const macdLine = n(indicators?.macdLine);
+    const macdSignal = n(indicators?.macdSignal);
+    const macdHistogram = n(indicators?.macdHistogram);
+    if (macdLine !== null && macdSignal !== null) {
+        const bullish = macdLine > macdSignal;
+        let pts = bullish ? 10 : -10;
+        if (macdHistogram !== null) {
+            if (bullish && macdHistogram > 0) pts += 2;
+            if (!bullish && macdHistogram < 0) pts -= 2;
+        }
+        add(pts, bullish ? 'MACD bullish' : 'MACD bearish');
+    }
+
+    const rsi = n(indicators?.rsi);
+    if (rsi !== null) {
+        if (rsi >= 52 && rsi <= 70) add(10, 'RSI en zone haussière');
+        else if (rsi >= 30 && rsi <= 48) add(-10, 'RSI en zone baissière');
+        else if (rsi > 75) add(-8, 'RSI surachat (risque pullback)');
+        else if (rsi < 25) add(8, 'RSI survente (risque rebond)');
+    }
+
+    const stochSignal = String(indicators?.stochRsi?.signal || '').toUpperCase();
+    if (stochSignal === 'BULLISH' || stochSignal === 'OVERSOLD') add(7, 'Stoch RSI orienté BUY');
+    else if (stochSignal === 'BEARISH' || stochSignal === 'OVERBOUGHT') add(-7, 'Stoch RSI orienté SELL');
+
+    const divSignal = String(indicators?.rsiDivergence?.signal || '').toUpperCase();
+    if (divSignal === 'BULLISH') add(9, 'Divergence RSI haussière');
+    else if (divSignal === 'BEARISH') add(-9, 'Divergence RSI baissière');
+
+    const obvTrend = String(indicators?.obv?.trend || '').toUpperCase();
+    if (obvTrend === 'UP') add(5, 'OBV en hausse');
+    else if (obvTrend === 'DOWN') add(-5, 'OBV en baisse');
+
+    const cvdTrend = String(indicators?.cvd?.trend || '').toUpperCase();
+    if (cvdTrend === 'UP') add(5, 'CVD en hausse');
+    else if (cvdTrend === 'DOWN') add(-5, 'CVD en baisse');
+
+    const volSkew = String(indicators?.volumeProfile?.skew || '').toUpperCase();
+    if (volSkew === 'BUY') add(6, 'Volume profile acheteur');
+    else if (volSkew === 'SELL') add(-6, 'Volume profile vendeur');
+
+    const ichimokuSignal = String(indicators?.ichimoku?.signal || '').toUpperCase();
+    if (ichimokuSignal === 'BULLISH') add(7, 'Ichimoku bullish');
+    else if (ichimokuSignal === 'BEARISH') add(-7, 'Ichimoku bearish');
+
+    const fibTrend = String(indicators?.fibonacci?.trend || '').toUpperCase();
+    if (fibTrend === 'UP') add(4, 'Structure Fibonacci UP');
+    else if (fibTrend === 'DOWN') add(-4, 'Structure Fibonacci DOWN');
+    if (indicators?.fibonacci?.inGoldenPocket === true) {
+        if (fibTrend === 'UP') add(3, 'Golden Pocket haussière');
+        else if (fibTrend === 'DOWN') add(-3, 'Golden Pocket baissière');
+    }
+
+    const mtfSignal = String(indicators?.mtfConfluence?.signal || '').toUpperCase();
+    const mtfStrength = clamp(toNum(indicators?.mtfConfluence?.strength, 0), 0, 100);
+    if (mtfSignal === 'BUY') add(Math.round(mtfStrength * 0.1), `Confluence MTF BUY (${mtfStrength}%)`);
+    else if (mtfSignal === 'SELL') add(-Math.round(mtfStrength * 0.1), `Confluence MTF SELL (${mtfStrength}%)`);
+
+    const proScore = n(indicators?.proCombo?.score);
+    if (proScore !== null) {
+        add(Math.round((proScore - 50) * 0.3), `Score combo ${proScore.toFixed(1)}`);
+    }
+
+    if (candles.length >= 3) {
+        const last = candles[candles.length - 1] || {};
+        const prev = candles[candles.length - 2] || {};
+        const prev2 = candles[candles.length - 3] || {};
+        const c0 = n(last.close);
+        const c1 = n(prev.close);
+        const c2 = n(prev2.close);
+        if (c0 !== null && c1 !== null && c2 !== null) {
+            if (c0 > c1 && c1 > c2) add(9, '3 clôtures ascendantes');
+            else if (c0 < c1 && c1 < c2) add(-9, '3 clôtures descendantes');
+        }
+        const h0 = n(last.high), h1 = n(prev.high), l0 = n(last.low), l1 = n(prev.low);
+        if (h0 !== null && h1 !== null && l0 !== null && l1 !== null) {
+            if (h0 > h1 && l0 > l1) add(6, 'Price action HH/HL');
+            else if (h0 < h1 && l0 < l1) add(-6, 'Price action LH/LL');
+        }
+    }
+
+    if (safePrice > 0) {
+        const atrPct = (atr / safePrice) * 100;
+        if (atrPct < 0.03) add(-3, 'Volatilité trop faible');
+        else if (atrPct > 1.2) add(-3, 'Volatilité excessive');
+        else add(3, 'Volatilité adaptée au scalp');
+    }
+
+    let signal = 'HOLD';
+    if (score >= 18) signal = 'BUY';
+    else if (score <= -18) signal = 'SELL';
+
+    const absScore = Math.abs(score);
+    const confidence = signal === 'HOLD'
+        ? clamp(Math.round(45 + Math.min(20, absScore * 0.5)), 35, 70)
+        : clamp(Math.round(58 + Math.min(35, absScore * 0.8)), 55, 97);
+
+    const entryPrice = parseFloat(safePrice.toFixed(2));
+    let takeProfit = 0;
+    let stopLoss = 0;
+    if (signal === 'BUY') {
+        takeProfit = parseFloat((entryPrice + (atr * 0.8)).toFixed(2));
+        stopLoss = parseFloat((entryPrice - (atr * 0.55)).toFixed(2));
+    } else if (signal === 'SELL') {
+        takeProfit = parseFloat((entryPrice - (atr * 0.8)).toFixed(2));
+        stopLoss = parseFloat((entryPrice + (atr * 0.55)).toFixed(2));
+    }
+
+    const rankedReasons = reasons
+        .sort((a, b) => Math.abs(b.points) - Math.abs(a.points))
+        .slice(0, 5);
+    const compactReasons = rankedReasons.map(r => `${r.points > 0 ? '+' : ''}${r.points} ${r.text}`);
+
+    return {
+        signal,
+        confidence,
+        score: parseFloat(score.toFixed(1)),
+        horizonMinutes: 3,
+        entryPrice,
+        takeProfit,
+        stopLoss,
+        reasoning: signal === 'HOLD'
+            ? `Pas de biais net sur 3 minutes (score ${score.toFixed(1)}). Attendre meilleure confluence.`
+            : `Scalp 3 minutes ${signal} (score ${score.toFixed(1)}).`,
+        reasons: compactReasons,
+        symbol,
+        targetTime: new Date(Date.now() + 3 * 60 * 1000).toISOString(),
+        updatedAt: new Date().toISOString()
+    };
+}
+
+app.post('/api/scalp-3m', async (req, res) => {
+    const { indicators, candles, currentPrice, symbol: inputSymbol, timeframe } = req.body || {};
+    const symbol = inputSymbol || 'XAU/USD';
+    const config = INSTRUMENTS[symbol] || INSTRUMENTS['XAU/USD'];
+    const safePrice = toNum(currentPrice, instrumentState[symbol]?.lastKnownPrice || config.basePrice);
+
+    if (!INSTRUMENTS[symbol]) {
+        return res.json({ success: false, error: 'Unknown symbol' });
+    }
+
+    if (isMarketClosed(symbol)) {
+        return res.json({
+            success: true,
+            source: 'scalp-rules',
+            symbol,
+            timeframe: timeframe || '1min',
+            signal: 'HOLD',
+            confidence: 100,
+            score: 0,
+            horizonMinutes: 3,
+            entryPrice: parseFloat(safePrice.toFixed(2)),
+            takeProfit: 0,
+            stopLoss: 0,
+            reasoning: getMarketClosedReason(symbol),
+            reasons: ['Marché fermé'],
+            targetTime: new Date(Date.now() + 3 * 60 * 1000).toISOString(),
+            updatedAt: new Date().toISOString(),
+            marketStatus: 'closed'
+        });
+    }
+
+    const normalizedCandles = Array.isArray(candles)
+        ? candles
+            .slice(-200)
+            .map(c => ({
+                open: toNum(c?.open, 0),
+                high: toNum(c?.high, 0),
+                low: toNum(c?.low, 0),
+                close: toNum(c?.close, 0),
+                volume: toNum(c?.volume, 0),
+                time: toNum(c?.time, 0)
+            }))
+            .filter(c => c.open > 0 && c.high > 0 && c.low > 0 && c.close > 0)
+        : [];
+
+    const prediction = evaluateScalp3mPrediction(indicators || {}, normalizedCandles, safePrice, symbol);
+
+    res.json({
+        success: true,
+        source: 'scalp-rules',
+        symbol,
+        timeframe: timeframe || '1min',
+        ...prediction
+    });
+});
 
 // Main AI signal endpoint
 app.post('/api/ai-signal', async (req, res) => {

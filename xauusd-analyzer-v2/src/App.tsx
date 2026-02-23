@@ -58,7 +58,7 @@ function App() {
 
                 <div className="instrument-selector">
                     {[
-                        { sym: 'XAU/USD', icon: '🥇', name: 'Gold (TradingView/Swissquote)' },
+                        { sym: 'XAU/USD', icon: '🥇', name: 'Gold (Capital.com/TradingView)' },
                         { sym: 'BTC/USD', icon: '₿', name: 'Bitcoin (Binance)' },
                         { sym: 'ETH/USD', icon: 'Ξ', name: 'Ethereum (Binance)' }
                     ].map(({ sym, icon, name }) => {
@@ -81,7 +81,7 @@ function App() {
 
                 <div className="price-ticker" style={{ display: 'flex', alignItems: 'baseline', gap: '12px' }}>
                     <span style={{ fontSize: '13px', color: 'var(--text-secondary)', fontWeight: 'bold' }}>
-                        Source: <span style={{ color: 'var(--text-main)' }}>{currentSymbol === 'XAU/USD' ? 'TradingView / Swissquote' : 'Binance'}</span>
+                        Source: <span style={{ color: 'var(--text-main)' }}>{currentSymbol === 'XAU/USD' ? 'Capital.com / TradingView / Swissquote' : 'Binance'}</span>
                     </span>
                     <span className="ticker-price">${price ? price.toLocaleString(undefined, { minimumFractionDigits: 2 }) : '—'}</span>
                 </div>
