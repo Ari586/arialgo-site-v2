@@ -350,6 +350,78 @@ async function fetchSwissquoteTick(symbol) {
     return null;
 }
 
+// TradingView scanner fallback for XAU/USD (spot brokers)
+const tradingViewXauTickers = ['OANDA:XAUUSD', 'FX_IDC:XAUUSD', 'TVC:GOLD'];
+const TRADINGVIEW_CACHE_MS = 5000;
+const tradingViewCache = {};
+
+async function fetchTradingViewXauTick(symbol) {
+    if (symbol !== 'XAU/USD') return null;
+
+    const cacheKey = 'tradingview_xauusd_tick';
+    const now = Date.now();
+    if (tradingViewCache[cacheKey] && (now - tradingViewCache[cacheKey].timestamp) < TRADINGVIEW_CACHE_MS) {
+        return tradingViewCache[cacheKey].data;
+    }
+
+    const fetch = (await import('node-fetch')).default;
+    const regions = ['global', 'cfd'];
+    const payload = {
+        symbols: { tickers: tradingViewXauTickers, query: { types: [] } },
+        columns: ['close', 'open', 'high', 'low', 'change', 'volume', 'description']
+    };
+
+    for (const region of regions) {
+        try {
+            const res = await fetch(`https://scanner.tradingview.com/${region}/scan`, {
+                method: 'POST',
+                timeout: 5000,
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Origin': 'https://www.tradingview.com',
+                    'Referer': 'https://www.tradingview.com/'
+                },
+                body: JSON.stringify(payload)
+            });
+            const data = await res.json();
+            const rows = Array.isArray(data?.data) ? data.data : [];
+            if (rows.length === 0) continue;
+
+            const preferred = rows.find(r => r?.s === 'OANDA:XAUUSD') || rows[0];
+            const d = Array.isArray(preferred?.d) ? preferred.d : [];
+            const price = Number(d[0]);
+            if (!Number.isFinite(price) || price <= 0) continue;
+
+            const spread = Math.max(price * 0.00008, 0.1);
+            const bid = parseFloat((price - spread / 2).toFixed(3));
+            const ask = parseFloat((price + spread / 2).toFixed(3));
+
+            const tick = {
+                price: parseFloat(price.toFixed(3)),
+                bid,
+                ask,
+                spread: parseFloat((ask - bid).toFixed(3)),
+                open: Number.isFinite(Number(d[1])) ? Number(d[1]) : undefined,
+                high: Number.isFinite(Number(d[2])) ? Number(d[2]) : undefined,
+                low: Number.isFinite(Number(d[3])) ? Number(d[3]) : undefined,
+                change24h: Number.isFinite(Number(d[4])) ? Number(d[4]) : undefined,
+                volume24h: Number.isFinite(Number(d[5])) ? Number(d[5]) : undefined,
+                provider: 'tradingview',
+                providerSymbol: preferred?.s || null,
+                providerDescription: typeof d[6] === 'string' ? d[6] : null,
+                timestamp: Date.now()
+            };
+
+            tradingViewCache[cacheKey] = { data: tick, timestamp: now };
+            return tick;
+        } catch (e) {
+            console.log(`TradingView ${region} XAU failed:`, e.message);
+        }
+    }
+
+    return null;
+}
+
 // Yahoo Finance for candle history (free, no key required)
 const yahooCache = {};
 const YAHOO_CACHE_MS = 30000;
@@ -560,8 +632,7 @@ async function fetchBinanceHistory(symbol, interval = '1min', outputsize = 200) 
 // ============================================================
 //  KRAKEN API — Good for XAU/USD + crypto (free, no key)
 // ============================================================
-// Kraken uses XAUTUSD for Tether Gold (XAU exposure in USD).
-const krakenSymbols = { 'XAU/USD': 'XAUTUSD', 'BTC/USD': 'XXBTZUSD', 'ETH/USD': 'XETHZUSD' };
+const krakenSymbols = { 'BTC/USD': 'XXBTZUSD', 'ETH/USD': 'XETHZUSD' };
 
 async function fetchKrakenTick(symbol) {
     const krakenPair = krakenSymbols[symbol];
@@ -719,8 +790,8 @@ app.get('/api/price', async (req, res) => {
         sources.push(() => fetchKrakenTick(symbol));
         sources.push(() => fetchCryptoTick(symbol));
     } else {
-        // XAU/USD: Kraken → Swissquote → Yahoo
-        sources.push(() => fetchKrakenTick(symbol));
+        // XAU/USD: TradingView → Swissquote → Yahoo
+        sources.push(() => fetchTradingViewXauTick(symbol));
         sources.push(() => fetchSwissquoteTick(symbol));
     }
 
@@ -802,9 +873,6 @@ app.get('/api/history', async (req, res) => {
         // Crypto: Binance → Kraken → Yahoo → TwelveData
         sources.push({ name: 'binance', fn: () => fetchBinanceHistory(symbol, interval, outputsize) });
         sources.push({ name: 'kraken', fn: () => fetchKrakenHistory(symbol, interval, outputsize) });
-    } else {
-        // XAU/USD: Kraken → Yahoo → TwelveData
-        sources.push({ name: 'kraken', fn: () => fetchKrakenHistory(symbol, interval, outputsize) });
     }
     sources.push({ name: 'yahoo', fn: () => fetchYahooFinanceHistory(symbol, interval, outputsize) });
     sources.push({ name: 'twelvedata', fn: () => fetchTwelveData(symbol, interval, outputsize) });
@@ -819,6 +887,16 @@ app.get('/api/history', async (req, res) => {
         } catch (e) {
             console.log(`${src.name} history ${symbol} failed:`, e.message);
         }
+    }
+
+    // Last fallback for XAU/USD: align simulated candles to TradingView spot tick.
+    if (symbol === 'XAU/USD') {
+        try {
+            const tvTick = await fetchTradingViewXauTick(symbol);
+            if (tvTick && Number.isFinite(tvTick.price)) {
+                state.lastKnownPrice = tvTick.price;
+            }
+        } catch (e) { /* ignore */ }
     }
 
     // Fallback: simulated
@@ -1502,11 +1580,12 @@ app.get('/api/multi-tf', async (req, res) => {
 
     for (const tf of timeframes) {
         try {
-            // Try Binance for crypto, Kraken for gold, Yahoo as fallback
+            // Try exchange-native feeds first, then Yahoo/TwelveData fallback.
             let candles = null;
             if (binanceSymbols[symbol]) candles = await fetchBinanceHistory(symbol, tf, 50);
-            if (!candles) candles = await fetchKrakenHistory(symbol, tf, 50);
+            if (!candles && krakenSymbols[symbol]) candles = await fetchKrakenHistory(symbol, tf, 50);
             if (!candles) candles = await fetchYahooFinanceHistory(symbol, tf, 50);
+            if (!candles && symbol === 'XAU/USD') candles = await fetchTwelveData(symbol, tf, 50);
 
             if (candles && candles.length >= 14) {
                 // Calculate RSI for each timeframe
@@ -2053,7 +2132,7 @@ async function streamPrices() {
                 sources.push(() => fetchKrakenTick(symbol));
                 sources.push(() => fetchCryptoTick(symbol));
             } else {
-                sources.push(() => fetchKrakenTick(symbol));
+                sources.push(() => fetchTradingViewXauTick(symbol));
                 sources.push(() => fetchSwissquoteTick(symbol));
             }
 
