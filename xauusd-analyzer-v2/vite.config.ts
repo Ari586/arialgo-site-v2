@@ -52,18 +52,26 @@ function createAccessCodeGuard(env: Record<string, string>): Plugin {
 
 export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, process.cwd(), '')
+    const backendHttpTarget = env.VITE_BACKEND_HTTP_TARGET || 'http://localhost:8080'
+    const backendWsTarget = env.VITE_BACKEND_WS_TARGET || 'ws://localhost:8080'
+    const devPort = Number(env.VITE_PORT || 5174)
 
     return {
         plugins: [react(), createAccessCodeGuard(env)],
         server: {
             host: true,
-            port: 5174,
+            port: devPort,
             strictPort: true,
             allowedHosts: true,
             proxy: {
-                '/api': { target: 'http://localhost:8080', changeOrigin: true },
-                '/ws': { target: 'ws://localhost:8080', ws: true }
+                '/api': { target: backendHttpTarget, changeOrigin: true },
+                '/ws': { target: backendWsTarget, ws: true }
             }
+        },
+        preview: {
+            host: true,
+            port: devPort,
+            strictPort: true
         }
     }
 })

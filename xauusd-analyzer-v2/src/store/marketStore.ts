@@ -6,17 +6,21 @@ export const useMarketStore = create<MarketState>((set) => ({
     currentTimeframe: '1min',
     instruments: [],
     prices: {},
+    priceMeta: {},
     orderbook: null,
     signalHistory: [],
-    selectedAI: 'ollama',
+    selectedAI: 'auto',
 
     setSymbol: (symbol) => set({ currentSymbol: symbol }),
     setTimeframe: (timeframe) => set({ currentTimeframe: timeframe }),
 
     setInstruments: (instruments) => set({ instruments }),
 
-    updatePrice: (symbol, price) => set((state) => ({
-        prices: { ...state.prices, [symbol]: price }
+    updatePrice: (symbol, price, meta) => set((state) => ({
+        prices: { ...state.prices, [symbol]: price },
+        priceMeta: meta
+            ? { ...state.priceMeta, [symbol]: { ...state.priceMeta[symbol], ...meta, symbol } }
+            : state.priceMeta
     })),
 
     updateOrderbook: (data) => set({ orderbook: data }),

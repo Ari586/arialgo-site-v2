@@ -267,54 +267,137 @@ export function calcVWAP(candles) {
  * Detect candlestick patterns
  */
 export function detectPatterns(candles) {
-    if (candles.length < 3) return [];
-    const patterns = [];
-    const c = candles[candles.length - 1];
-    const p = candles[candles.length - 2];
-    const pp = candles[candles.length - 3];
-    const bodySize = Math.abs(c.close - c.open);
-    const upperWick = c.high - Math.max(c.open, c.close);
-    const lowerWick = Math.min(c.open, c.close) - c.low;
-    const range = c.high - c.low;
+    if (candles.length < 6) return [];
 
-    // Doji
-    if (bodySize < range * 0.1 && range > 0) {
-        patterns.push({ name: 'Doji', type: 'neutral', emoji: '⚖️' });
+    const lookback = Math.min(40, candles.length);
+    const startIndex = Math.max(2, candles.length - lookback);
+    const scored = [];
+
+    const pushPattern = (name, type, emoji, index, quality = 0.5) => {
+        const recency = clamp(1 - ((candles.length - 1 - index) / lookback), 0, 1);
+        const confidence = clamp(Math.round(45 + (quality * 35) + (recency * 20)), 35, 95);
+        const score = confidence + Math.round(recency * 10);
+        scored.push({ name, type, emoji, confidence, _score: score, _index: index });
+    };
+
+    for (let i = startIndex; i < candles.length; i++) {
+        const c = candles[i];
+        const p = candles[i - 1];
+        const pp = candles[i - 2];
+        const bodySize = Math.abs(c.close - c.open);
+        const range = Math.max(c.high - c.low, 1e-9);
+        const upperWick = c.high - Math.max(c.open, c.close);
+        const lowerWick = Math.min(c.open, c.close) - c.low;
+        const bodyRatio = bodySize / range;
+        const upperRatio = upperWick / range;
+        const lowerRatio = lowerWick / range;
+
+        if (bodyRatio <= 0.11) {
+            pushPattern('Doji', 'neutral', '⚖️', i, 1 - bodyRatio);
+        }
+
+        if (lowerRatio >= 0.55 && upperRatio <= 0.18 && bodyRatio <= 0.35 && c.close >= c.open) {
+            pushPattern('Hammer', 'bullish', '🔨', i, lowerRatio);
+        }
+
+        if (upperRatio >= 0.55 && lowerRatio <= 0.18 && bodyRatio <= 0.35 && c.close <= c.open) {
+            pushPattern('Shooting Star', 'bearish', '⭐', i, upperRatio);
+        }
+
+        const pBody = Math.abs(p.close - p.open);
+        if (
+            p.close < p.open &&
+            c.close > c.open &&
+            c.open <= p.close &&
+            c.close >= p.open &&
+            bodySize >= pBody * 0.9
+        ) {
+            pushPattern('Bullish Engulfing', 'bullish', '🟢', i, clamp(bodySize / Math.max(pBody, 1e-9), 0.5, 1.8) / 1.8);
+        }
+
+        if (
+            p.close > p.open &&
+            c.close < c.open &&
+            c.open >= p.close &&
+            c.close <= p.open &&
+            bodySize >= pBody * 0.9
+        ) {
+            pushPattern('Bearish Engulfing', 'bearish', '🔴', i, clamp(bodySize / Math.max(pBody, 1e-9), 0.5, 1.8) / 1.8);
+        }
+
+        const ppBody = Math.abs(pp.close - pp.open);
+        if (
+            pp.close < pp.open &&
+            pBody < ppBody * 0.45 &&
+            c.close > c.open &&
+            c.close > (pp.open + pp.close) / 2
+        ) {
+            pushPattern('Morning Star', 'bullish', '🌅', i, 0.7);
+        }
+
+        if (
+            pp.close > pp.open &&
+            pBody < ppBody * 0.45 &&
+            c.close < c.open &&
+            c.close < (pp.open + pp.close) / 2
+        ) {
+            pushPattern('Evening Star', 'bearish', '🌆', i, 0.7);
+        }
     }
 
-    // Hammer (bullish reversal)
-    if (lowerWick > bodySize * 2 && upperWick < bodySize * 0.5 && bodySize > 0) {
-        patterns.push({ name: 'Hammer', type: 'bullish', emoji: '🔨' });
+    const latestWindow = candles.slice(-12);
+    if (latestWindow.length >= 6) {
+        const last = latestWindow[latestWindow.length - 1];
+        const prev = latestWindow[latestWindow.length - 2];
+        const highs = latestWindow.slice(0, -1).map(c => c.high);
+        const lows = latestWindow.slice(0, -1).map(c => c.low);
+        const resistance = Math.max(...highs);
+        const support = Math.min(...lows);
+        const avgRange = latestWindow.reduce((sum, c) => sum + Math.max(1e-9, c.high - c.low), 0) / latestWindow.length;
+        const breakoutUp = last.close > resistance && (last.close - resistance) > avgRange * 0.05;
+        const breakoutDown = last.close < support && (support - last.close) > avgRange * 0.05;
+        const rejectionResistance = last.high >= resistance && last.close < resistance && prev.close >= support;
+        const reclaimSupport = last.low <= support && last.close > support && prev.close <= resistance;
+
+        if (breakoutUp) pushPattern('Brisee Micro-Resistance', 'bullish', '🚀', candles.length - 1, 0.8);
+        if (breakoutDown) pushPattern('Brisee Micro-Support', 'bearish', '📉', candles.length - 1, 0.8);
+        if (rejectionResistance) pushPattern('Rejet Micro-Resistance', 'bearish', '⛔', candles.length - 1, 0.65);
+        if (reclaimSupport) pushPattern('Reprise Micro-Support', 'bullish', '✅', candles.length - 1, 0.65);
     }
 
-    // Shooting Star (bearish reversal)
-    if (upperWick > bodySize * 2 && lowerWick < bodySize * 0.5 && bodySize > 0) {
-        patterns.push({ name: 'Shooting Star', type: 'bearish', emoji: '⭐' });
+    const closes = candles.map(c => c.close);
+    if (closes.length >= 21) {
+        const ema9 = calcEMA(closes, 9);
+        const ema21 = calcEMA(closes, 21);
+        if (ema9 && ema21) {
+            const fast = ema9[ema9.length - 1];
+            const slow = ema21[ema21.length - 1];
+            const last = candles[candles.length - 1];
+            const trendUp = fast > slow;
+            const trendDown = fast < slow;
+            const nearFast = Math.abs(last.close - fast) <= Math.max(1e-9, Math.abs(fast) * 0.0015);
+
+            if (nearFast && trendUp && last.close > fast) {
+                pushPattern('Pullback EMA', 'bullish', '📈', candles.length - 1, 0.6);
+            } else if (nearFast && trendDown && last.close < fast) {
+                pushPattern('Pullback EMA', 'bearish', '📉', candles.length - 1, 0.6);
+            }
+        }
     }
 
-    // Engulfing Bullish
-    if (p.close < p.open && c.close > c.open && c.close > p.open && c.open < p.close) {
-        patterns.push({ name: 'Bullish Engulfing', type: 'bullish', emoji: '🟢' });
+    const bestByKey = new Map();
+    for (const item of scored) {
+        const key = `${item.name}:${item.type}`;
+        const prev = bestByKey.get(key);
+        if (!prev || item._score > prev._score || (item._score === prev._score && item._index > prev._index)) {
+            bestByKey.set(key, item);
+        }
     }
 
-    // Engulfing Bearish
-    if (p.close > p.open && c.close < c.open && c.close < p.open && c.open > p.close) {
-        patterns.push({ name: 'Bearish Engulfing', type: 'bearish', emoji: '🔴' });
-    }
-
-    // Morning Star (bullish)
-    const ppBody = Math.abs(pp.close - pp.open);
-    const pBody = Math.abs(p.close - p.open);
-    if (pp.close < pp.open && pBody < ppBody * 0.3 && c.close > c.open && c.close > (pp.open + pp.close) / 2) {
-        patterns.push({ name: 'Morning Star', type: 'bullish', emoji: '🌅' });
-    }
-
-    // Evening Star (bearish)
-    if (pp.close > pp.open && pBody < ppBody * 0.3 && c.close < c.open && c.close < (pp.open + pp.close) / 2) {
-        patterns.push({ name: 'Evening Star', type: 'bearish', emoji: '🌆' });
-    }
-
-    return patterns;
+    return Array.from(bestByKey.values())
+        .sort((a, b) => (b._score - a._score) || (b._index - a._index))
+        .slice(0, 8)
+        .map(({ _score, _index, ...pattern }) => pattern);
 }
 
 /**

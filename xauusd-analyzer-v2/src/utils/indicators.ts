@@ -11,8 +11,29 @@ export interface Candle {
     time: number | string;
 }
 
+export interface IndicatorSettings {
+    rsiPeriod?: number;
+    bollingerStdDev?: number;
+    supertrendAtrPeriod?: number;
+    supertrendMultiplier?: number;
+}
+
 function clamp(value: number, min: number, max: number) {
     return Math.min(max, Math.max(min, value));
+}
+
+function normalizeIndicatorSettings(settings: IndicatorSettings = {}) {
+    const rsiPeriod = clamp(Math.round(Number(settings.rsiPeriod ?? 14)), 5, 50);
+    const bollingerStdDev = clamp(Number(settings.bollingerStdDev ?? 2), 1, 4);
+    const supertrendAtrPeriod = clamp(Math.round(Number(settings.supertrendAtrPeriod ?? 10)), 5, 60);
+    const supertrendMultiplier = clamp(Number(settings.supertrendMultiplier ?? 3), 1, 10);
+
+    return {
+        rsiPeriod,
+        bollingerStdDev: parseFloat(bollingerStdDev.toFixed(2)),
+        supertrendAtrPeriod,
+        supertrendMultiplier: parseFloat(supertrendMultiplier.toFixed(2))
+    };
 }
 
 /**
@@ -124,6 +145,86 @@ export function calcATR(candles: Candle[], period = 14) {
         atr = (atr * (period - 1) + trueRanges[i]) / period;
     }
     return parseFloat(atr.toFixed(2));
+}
+
+/**
+ * Calculate Supertrend (direction + dynamic trailing band)
+ */
+export function calcSupertrend(candles: Candle[], period = 10, multiplier = 3) {
+    if (!candles || candles.length < Math.max(period + 2, 20)) return null;
+
+    const trueRanges: number[] = [];
+    for (let i = 1; i < candles.length; i++) {
+        const tr = Math.max(
+            candles[i].high - candles[i].low,
+            Math.abs(candles[i].high - candles[i - 1].close),
+            Math.abs(candles[i].low - candles[i - 1].close)
+        );
+        trueRanges.push(tr);
+    }
+    if (trueRanges.length < period + 1) return null;
+
+    const atrSeries: Array<number | null> = Array(candles.length).fill(null);
+    let atr = trueRanges.slice(0, period).reduce((a, b) => a + b, 0) / period;
+    atrSeries[period] = atr;
+    for (let i = period + 1; i < candles.length; i++) {
+        atr = ((atr * (period - 1)) + trueRanges[i - 1]) / period;
+        atrSeries[i] = atr;
+    }
+
+    const finalUpper: number[] = Array(candles.length).fill(0);
+    const finalLower: number[] = Array(candles.length).fill(0);
+    const direction: Array<1 | -1> = Array(candles.length).fill(1);
+
+    for (let i = period; i < candles.length; i++) {
+        const atrValue = atrSeries[i];
+        if (atrValue === null) continue;
+
+        const hl2 = (candles[i].high + candles[i].low) / 2;
+        const basicUpper = hl2 + (multiplier * atrValue);
+        const basicLower = hl2 - (multiplier * atrValue);
+
+        if (i === period) {
+            finalUpper[i] = basicUpper;
+            finalLower[i] = basicLower;
+            direction[i] = candles[i].close >= basicLower ? 1 : -1;
+            continue;
+        }
+
+        const prevUpper = finalUpper[i - 1];
+        const prevLower = finalLower[i - 1];
+        const prevClose = candles[i - 1].close;
+
+        finalUpper[i] = (basicUpper < prevUpper || prevClose > prevUpper) ? basicUpper : prevUpper;
+        finalLower[i] = (basicLower > prevLower || prevClose < prevLower) ? basicLower : prevLower;
+
+        const prevDirection = direction[i - 1];
+        if (prevDirection === -1 && candles[i].close > finalUpper[i]) {
+            direction[i] = 1;
+        } else if (prevDirection === 1 && candles[i].close < finalLower[i]) {
+            direction[i] = -1;
+        } else {
+            direction[i] = prevDirection;
+        }
+    }
+
+    const last = candles.length - 1;
+    const dir = direction[last];
+    const supertrendValue = dir === 1 ? finalLower[last] : finalUpper[last];
+    const distancePct = candles[last].close === 0
+        ? 0
+        : ((candles[last].close - supertrendValue) / candles[last].close) * 100;
+
+    return {
+        direction: dir === 1 ? 'UP' : 'DOWN',
+        signal: dir === 1 ? 'BUY' : 'SELL',
+        value: parseFloat(supertrendValue.toFixed(2)),
+        upper: parseFloat(finalUpper[last].toFixed(2)),
+        lower: parseFloat(finalLower[last].toFixed(2)),
+        distancePct: parseFloat(distancePct.toFixed(2)),
+        period,
+        multiplier
+    };
 }
 
 /**
@@ -1050,54 +1151,272 @@ export function calculateProCombo(candles: Candle[], indicators: any, currentPri
  * Detect candlestick patterns
  */
 export function detectPatterns(candles: Candle[]) {
-    if (candles.length < 3) return [];
-    const patterns = [];
-    const c = candles[candles.length - 1];
-    const p = candles[candles.length - 2];
-    const pp = candles[candles.length - 3];
-    const bodySize = Math.abs(c.close - c.open);
-    const upperWick = c.high - Math.max(c.open, c.close);
-    const lowerWick = Math.min(c.open, c.close) - c.low;
-    const range = c.high - c.low;
+    if (candles.length < 8) return [];
 
-    // Doji
-    if (bodySize < range * 0.1 && range > 0) {
-        patterns.push({ name: 'Doji', type: 'neutral', emoji: '⚖️' });
+    const lookback = Math.min(50, candles.length);
+    const startIndex = Math.max(2, candles.length - lookback);
+    const scored: Array<any> = [];
+    const recentRanges = candles
+        .slice(-Math.min(30, candles.length))
+        .map((c) => Math.max(c.high - c.low, 1e-9));
+    const avgRangeGlobal = recentRanges.length > 0
+        ? recentRanges.reduce((sum, value) => sum + value, 0) / recentRanges.length
+        : 1;
+    const atrGlobal = calcATR(candles, 14);
+    const latestPrice = Math.max(1e-9, Math.abs(candles[candles.length - 1]?.close || 0));
+    const atrBase = Number.isFinite(Number(atrGlobal)) ? Number(atrGlobal) : 0;
+    const baseVolatility = Math.max(avgRangeGlobal, atrBase, latestPrice * 0.0006);
+
+    const toEpochMs = (value: number | string) => {
+        const n = Number(value);
+        if (Number.isFinite(n)) {
+            if (n > 1e14) return Math.floor(n / 1000); // microseconds
+            if (n > 1e12) return Math.floor(n); // milliseconds
+            return Math.floor(n * 1000); // seconds
+        }
+        const parsed = Date.parse(String(value));
+        return Number.isFinite(parsed) ? parsed : Date.now();
+    };
+
+    const chooseDecimals = (price: number) => {
+        const abs = Math.abs(price);
+        if (abs >= 5000) return 2;
+        if (abs >= 100) return 3;
+        if (abs >= 1) return 4;
+        return 6;
+    };
+
+    const roundPx = (price: number, reference: number) => {
+        const decimals = chooseDecimals(reference);
+        return parseFloat(price.toFixed(decimals));
+    };
+
+    const buildTradePlan = (
+        type: 'bullish' | 'bearish' | 'neutral',
+        index: number,
+        quality: number,
+        opts?: { horizonBars?: number; rr?: number }
+    ) => {
+        if (type === 'neutral') return null;
+        const c = candles[index];
+        if (!c) return null;
+
+        const entry = c.close;
+        const range = Math.max(c.high - c.low, 1e-9);
+        const volatility = Math.max(baseVolatility, range * 0.8, Math.abs(entry) * 0.00045);
+        const rr = clamp(Number(opts?.rr ?? (1.3 + quality * 0.95)), 1.15, 2.8);
+        const horizonBars = clamp(Math.round(Number(opts?.horizonBars ?? (4 + quality * 8))), 2, 18);
+        const riskBase = Math.max(volatility * (0.55 + (1 - quality) * 0.3), range * 0.72);
+
+        let stopLoss = entry;
+        let takeProfit = entry;
+        if (type === 'bullish') {
+            stopLoss = Math.min(c.low - volatility * 0.2, entry - riskBase);
+            const risk = Math.max(entry - stopLoss, volatility * 0.35);
+            takeProfit = entry + (risk * rr);
+        } else {
+            stopLoss = Math.max(c.high + volatility * 0.2, entry + riskBase);
+            const risk = Math.max(stopLoss - entry, volatility * 0.35);
+            takeProfit = entry - (risk * rr);
+        }
+
+        const risk = Math.max(Math.abs(entry - stopLoss), 1e-9);
+        const reward = Math.abs(takeProfit - entry);
+        const riskReward = reward / risk;
+        const action = type === 'bullish' ? 'BUY' : 'SELL';
+
+        return {
+            nextAction: action,
+            entryPrice: roundPx(entry, entry),
+            stopLoss: roundPx(stopLoss, entry),
+            takeProfit: roundPx(takeProfit, entry),
+            riskReward: parseFloat(riskReward.toFixed(2)),
+            horizonBars
+        };
+    };
+
+    const pushPattern = (
+        name: string,
+        type: 'bullish' | 'bearish' | 'neutral',
+        emoji: string,
+        index: number,
+        quality = 0.5,
+        planOpts?: { horizonBars?: number; rr?: number }
+    ) => {
+        const recency = clamp(1 - ((candles.length - 1 - index) / lookback), 0, 1);
+        const confidence = clamp(Math.round(45 + (quality * 35) + (recency * 20)), 35, 95);
+        const score = confidence + Math.round(recency * 10);
+        const plan = buildTradePlan(type, index, quality, planOpts);
+        scored.push({
+            name,
+            type,
+            emoji,
+            confidence,
+            nextAction: plan?.nextAction || 'WAIT',
+            entryPrice: plan?.entryPrice,
+            stopLoss: plan?.stopLoss,
+            takeProfit: plan?.takeProfit,
+            riskReward: plan?.riskReward,
+            horizonBars: plan?.horizonBars,
+            timestamp: toEpochMs(candles[index]?.time),
+            _score: score,
+            _index: index
+        });
+    };
+
+    for (let i = startIndex; i < candles.length; i++) {
+        const c = candles[i];
+        const p = candles[i - 1];
+        const pp = candles[i - 2];
+        const bodySize = Math.abs(c.close - c.open);
+        const range = Math.max(c.high - c.low, 1e-9);
+        const upperWick = c.high - Math.max(c.open, c.close);
+        const lowerWick = Math.min(c.open, c.close) - c.low;
+        const bodyRatio = bodySize / range;
+        const upperRatio = upperWick / range;
+        const lowerRatio = lowerWick / range;
+
+        if (bodyRatio <= 0.11) {
+            pushPattern('Doji', 'neutral', '⚖️', i, 1 - bodyRatio);
+        }
+
+        if (lowerRatio >= 0.55 && upperRatio <= 0.18 && bodyRatio <= 0.35 && c.close >= c.open) {
+            pushPattern('Hammer', 'bullish', '🔨', i, lowerRatio, { horizonBars: 6, rr: 1.75 });
+        }
+
+        if (upperRatio >= 0.55 && lowerRatio <= 0.18 && bodyRatio <= 0.35 && c.close <= c.open) {
+            pushPattern('Shooting Star', 'bearish', '⭐', i, upperRatio, { horizonBars: 6, rr: 1.75 });
+        }
+
+        const pBody = Math.abs(p.close - p.open);
+        if (
+            p.close < p.open &&
+            c.close > c.open &&
+            c.open <= p.close &&
+            c.close >= p.open &&
+            bodySize >= pBody * 0.9
+        ) {
+            const quality = clamp(bodySize / Math.max(pBody, 1e-9), 0.5, 1.8) / 1.8;
+            pushPattern('Bullish Engulfing', 'bullish', '🟢', i, quality, { horizonBars: 7, rr: 1.9 });
+        }
+
+        if (
+            p.close > p.open &&
+            c.close < c.open &&
+            c.open >= p.close &&
+            c.close <= p.open &&
+            bodySize >= pBody * 0.9
+        ) {
+            const quality = clamp(bodySize / Math.max(pBody, 1e-9), 0.5, 1.8) / 1.8;
+            pushPattern('Bearish Engulfing', 'bearish', '🔴', i, quality, { horizonBars: 7, rr: 1.9 });
+        }
+
+        const ppBody = Math.abs(pp.close - pp.open);
+        if (
+            pp.close < pp.open &&
+            pBody < ppBody * 0.45 &&
+            c.close > c.open &&
+            c.close > (pp.open + pp.close) / 2
+        ) {
+            pushPattern('Morning Star', 'bullish', '🌅', i, 0.74, { horizonBars: 8, rr: 2.0 });
+        }
+
+        if (
+            pp.close > pp.open &&
+            pBody < ppBody * 0.45 &&
+            c.close < c.open &&
+            c.close < (pp.open + pp.close) / 2
+        ) {
+            pushPattern('Evening Star', 'bearish', '🌆', i, 0.74, { horizonBars: 8, rr: 2.0 });
+        }
     }
 
-    // Hammer (bullish reversal)
-    if (lowerWick > bodySize * 2 && upperWick < bodySize * 0.5 && bodySize > 0) {
-        patterns.push({ name: 'Hammer', type: 'bullish', emoji: '🔨' });
+    // Micro-structure patterns with confirmation on the next candle to avoid flicker.
+    const anchorIndex = candles.length - 2;
+    const confirmIndex = candles.length - 1;
+    if (anchorIndex >= 5 && confirmIndex > anchorIndex) {
+        const windowStart = Math.max(0, anchorIndex - 11);
+        const microWindow = candles.slice(windowStart, anchorIndex + 1);
+        if (microWindow.length >= 6) {
+            const anchor = candles[anchorIndex];
+            const confirm = candles[confirmIndex];
+            const highs = microWindow.slice(0, -1).map((c) => c.high);
+            const lows = microWindow.slice(0, -1).map((c) => c.low);
+            const resistance = Math.max(...highs);
+            const support = Math.min(...lows);
+            const avgRange = microWindow.reduce((sum, c) => sum + Math.max(1e-9, c.high - c.low), 0) / microWindow.length;
+            const anchorRange = Math.max(anchor.high - anchor.low, 1e-9);
+            const bodyStrength = Math.abs(anchor.close - anchor.open) / anchorRange;
+            const upperWickStrength = (anchor.high - Math.max(anchor.open, anchor.close)) / anchorRange;
+            const lowerWickStrength = (Math.min(anchor.open, anchor.close) - anchor.low) / anchorRange;
+
+            const breakoutBuffer = avgRange * 0.14;
+            const breakoutUp =
+                anchor.close > (resistance + breakoutBuffer) &&
+                bodyStrength >= 0.45 &&
+                confirm.close >= anchor.close - (avgRange * 0.12);
+            const breakoutDown =
+                anchor.close < (support - breakoutBuffer) &&
+                bodyStrength >= 0.45 &&
+                confirm.close <= anchor.close + (avgRange * 0.12);
+            const rejectionResistance =
+                anchor.high >= resistance &&
+                anchor.close < (resistance - (avgRange * 0.06)) &&
+                upperWickStrength >= 0.34 &&
+                confirm.close <= anchor.high;
+            const reclaimSupport =
+                anchor.low <= support &&
+                anchor.close > (support + (avgRange * 0.06)) &&
+                lowerWickStrength >= 0.34 &&
+                confirm.close >= anchor.low;
+
+            if (breakoutUp) pushPattern('Brisee Micro-Resistance', 'bullish', '🚀', anchorIndex, 0.84, { horizonBars: 5, rr: 1.7 });
+            if (breakoutDown) pushPattern('Brisee Micro-Support', 'bearish', '📉', anchorIndex, 0.84, { horizonBars: 5, rr: 1.7 });
+            if (rejectionResistance) pushPattern('Rejet Micro-Resistance', 'bearish', '⛔', anchorIndex, 0.7, { horizonBars: 6, rr: 1.6 });
+            if (reclaimSupport) pushPattern('Reprise Micro-Support', 'bullish', '✅', anchorIndex, 0.7, { horizonBars: 6, rr: 1.6 });
+        }
     }
 
-    // Shooting Star (bearish reversal)
-    if (upperWick > bodySize * 2 && lowerWick < bodySize * 0.5 && bodySize > 0) {
-        patterns.push({ name: 'Shooting Star', type: 'bearish', emoji: '⭐' });
+    // EMA pullback with one-candle confirmation to reduce noise.
+    const closes = candles.map((c) => c.close);
+    if (closes.length >= 24 && candles.length >= 3) {
+        const ema9 = calcEMA(closes, 9);
+        const ema21 = calcEMA(closes, 21);
+        if (ema9 && ema21 && ema9.length >= 2 && ema21.length >= 2) {
+            const fastNow = ema9[ema9.length - 1];
+            const slowNow = ema21[ema21.length - 1];
+            const fastPrev = ema9[ema9.length - 2];
+            const slowPrev = ema21[ema21.length - 2];
+
+            const pullbackIndex = candles.length - 2;
+            const confirm = candles[candles.length - 1];
+            const pullbackCandle = candles[pullbackIndex];
+            const nearFast = Math.abs(pullbackCandle.close - fastPrev) <= Math.max(avgRangeGlobal * 0.65, Math.abs(fastPrev) * 0.0012);
+            const trendUp = fastNow > slowNow && fastPrev >= slowPrev;
+            const trendDown = fastNow < slowNow && fastPrev <= slowPrev;
+
+            if (nearFast && trendUp && confirm.close > fastNow) {
+                pushPattern('Pullback EMA confirmé', 'bullish', '📈', pullbackIndex, 0.68, { horizonBars: 7, rr: 1.9 });
+            } else if (nearFast && trendDown && confirm.close < fastNow) {
+                pushPattern('Pullback EMA confirmé', 'bearish', '📉', pullbackIndex, 0.68, { horizonBars: 7, rr: 1.9 });
+            }
+        }
     }
 
-    // Engulfing Bullish
-    if (p.close < p.open && c.close > c.open && c.close > p.open && c.open < p.close) {
-        patterns.push({ name: 'Bullish Engulfing', type: 'bullish', emoji: '🟢' });
+    // Deduplicate by name/type, keeping the strongest and most recent.
+    const bestByKey = new Map<string, any>();
+    for (const item of scored) {
+        const key = `${item.name}:${item.type}`;
+        const prev = bestByKey.get(key);
+        if (!prev || item._score > prev._score || (item._score === prev._score && item._index > prev._index)) {
+            bestByKey.set(key, item);
+        }
     }
 
-    // Engulfing Bearish
-    if (p.close > p.open && c.close < c.open && c.close < p.open && c.open > p.close) {
-        patterns.push({ name: 'Bearish Engulfing', type: 'bearish', emoji: '🔴' });
-    }
-
-    // Morning Star (bullish)
-    const ppBody = Math.abs(pp.close - pp.open);
-    const pBody = Math.abs(p.close - p.open);
-    if (pp.close < pp.open && pBody < ppBody * 0.3 && c.close > c.open && c.close > (pp.open + pp.close) / 2) {
-        patterns.push({ name: 'Morning Star', type: 'bullish', emoji: '🌅' });
-    }
-
-    // Evening Star (bearish)
-    if (pp.close > pp.open && pBody < ppBody * 0.3 && c.close < c.open && c.close < (pp.open + pp.close) / 2) {
-        patterns.push({ name: 'Evening Star', type: 'bearish', emoji: '🌆' });
-    }
-
-    return patterns;
+    return Array.from(bestByKey.values())
+        .sort((a, b) => (b._score - a._score) || (b._index - a._index))
+        .slice(0, 8)
+        .map(({ _score, _index, ...pattern }) => pattern);
 }
 
 /**
@@ -1228,19 +1547,27 @@ export function determineTrend(indicators: any, currentPrice: number) {
 /**
  * Calculate ALL indicators from candles
  */
-export function calculateAllIndicators(candles: Candle[]) {
+export function calculateAllIndicators(candles: Candle[], settings: IndicatorSettings = {}) {
     if (!candles || candles.length < 30) return null;
+
+    const normalized = normalizeIndicatorSettings(settings);
+    const {
+        rsiPeriod,
+        bollingerStdDev,
+        supertrendAtrPeriod,
+        supertrendMultiplier
+    } = normalized;
 
     const closes = candles.map(c => c.close);
     const currentPrice = closes[closes.length - 1];
 
-    const rsi = calcRSI(closes);
-    const rsiSeries = calcRSISeries(closes);
+    const rsi = calcRSI(closes, rsiPeriod);
+    const rsiSeries = calcRSISeries(closes, rsiPeriod);
     const macd = calcMACD(closes);
-    const bb = calcBollingerBands(closes);
+    const bb = calcBollingerBands(closes, 20, bollingerStdDev);
     const atr = calcATR(candles);
     const stochastic = calcStochastic(candles);
-    const stochRsi = calcStochRSI(closes);
+    const stochRsi = calcStochRSI(closes, rsiPeriod);
     const rsiDivergence = detectRSIDivergence(candles, rsiSeries);
     const adx = calcADX(candles);
     const williamsR = calcWilliamsR(candles);
@@ -1254,6 +1581,7 @@ export function calculateAllIndicators(candles: Candle[]) {
     const keltner = calcKeltnerChannels(candles, 20, 1.5);
     const bbSqueeze = calcBBSqueeze(candles, bb);
     const ichimoku = calcIchimoku(candles, currentPrice);
+    const supertrend = calcSupertrend(candles, supertrendAtrPeriod, supertrendMultiplier);
     const orderBlocks = detectOrderBlocks(candles, atr);
     const fvgs = detectFVGs(candles);
     const fibonacci = calcFibonacciStructure(candles, currentPrice);
@@ -1290,12 +1618,15 @@ export function calculateAllIndicators(candles: Candle[]) {
         mfi,
         pivotPoints,
         vwap,
+        vwapSession: vwap,
+        vwapRolling: vwap,
         obv,
         cvd,
         volumeProfile,
         keltner,
         bbSqueeze,
         ichimoku,
+        supertrend,
         orderBlocks,
         fvgs,
         fibonacci,
@@ -1307,6 +1638,8 @@ export function calculateAllIndicators(candles: Candle[]) {
         proCombo: null as any,
         compositeScore: 0
     };
+
+    (indicators as any).indicatorSettings = normalized;
 
     indicators.trend = determineTrend(indicators, currentPrice);
     indicators.proCombo = calculateProCombo(candles, indicators, currentPrice);

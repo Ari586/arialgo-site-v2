@@ -8,7 +8,11 @@ const fetchMultiTF = async (symbol: string) => {
     return data;
 };
 
-export default function MultiTFPanel() {
+type MultiTFPanelProps = {
+    compact?: boolean;
+};
+
+export default function MultiTFPanel({ compact = false }: MultiTFPanelProps) {
     const currentSymbol = useMarketStore(state => state.currentSymbol);
 
     const { data: mtfData, isLoading, error } = useQuery({
@@ -32,7 +36,7 @@ export default function MultiTFPanel() {
     const timeframesList = ['1min', '5min', '15min', '1h'];
 
     return (
-        <div className="mtf-panel">
+        <div className={`mtf-panel ${compact ? 'compact' : ''}`}>
             {confluence && (
                 <div className={`mtf-consensus ${confluence.signal.toLowerCase()}`}>
                     <div className="mtf-consensus-label">CONSENSUS GLOBAL</div>
@@ -121,6 +125,42 @@ export default function MultiTFPanel() {
                 .signal-badge.buy { color: var(--buy); }
                 .signal-badge.sell { color: var(--sell); }
                 .signal-badge.neutral, .signal-badge.hold { color: var(--gold); }
+
+                .mtf-panel.compact {
+                    padding: 2px;
+                }
+                .mtf-panel.compact .mtf-consensus {
+                    padding: 6px 7px;
+                    margin-bottom: 6px;
+                    border-radius: 6px;
+                }
+                .mtf-panel.compact .mtf-consensus-label {
+                    font-size: 8px;
+                }
+                .mtf-panel.compact .mtf-consensus-value {
+                    font-size: 12px;
+                    margin: 2px 0;
+                    line-height: 1.2;
+                }
+                .mtf-panel.compact .mtf-consensus-score {
+                    font-size: 9px;
+                    line-height: 1.2;
+                }
+                .mtf-panel.compact .mtf-row {
+                    grid-template-columns: 0.72fr 0.72fr 1.35fr 0.95fr;
+                    gap: 6px;
+                    padding: 5px 0;
+                    font-size: 10px;
+                }
+                .mtf-panel.compact .mtf-header {
+                    font-size: 8.5px;
+                    padding-bottom: 2px;
+                    margin-bottom: 2px;
+                }
+                .mtf-panel.compact .tf-badge {
+                    font-size: 9px;
+                    padding: 1px 4px;
+                }
             `}</style>
         </div>
     );

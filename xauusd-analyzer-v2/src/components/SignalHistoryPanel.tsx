@@ -1,5 +1,6 @@
 import React from 'react';
 import { useMarketStore } from '../store/marketStore';
+import { formatSymbolPrice } from '../utils/priceFormat';
 
 export default function SignalHistoryPanel() {
     const signalHistory = useMarketStore(state => state.signalHistory);
@@ -74,7 +75,7 @@ export default function SignalHistoryPanel() {
                                     fontWeight: 'bold',
                                     color: s.signal === 'BUY' ? 'var(--buy)' : s.signal === 'SELL' ? 'var(--sell)' : 'var(--text-secondary)'
                                 }}>
-                                    {s.signal} @ {s.price.toFixed(2)}
+                                    {s.signal} @ {formatSymbolPrice(s.symbol, s.price)}
                                 </span>
                                 <span style={{ fontSize: '10px', background: 'rgba(255,255,255,0.05)', padding: '1px 4px', borderRadius: '3px', color: 'var(--text-secondary)' }}>
                                     {s.timeframe}

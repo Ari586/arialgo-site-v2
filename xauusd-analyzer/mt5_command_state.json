@@ -1,0 +1,11 @@
+{
+  "lastIssuedByScope": {},
+  "lastAckByScope": {},
+  "pendingById": {},
+  "ackById": {},
+  "liveGuardArmed": true,
+  "liveGuardUpdatedAt": "2026-03-03T20:17:54.357Z",
+  "liveGuardReason": "smoke_test_force_armed",
+  "liveGuardChangedBy": "smoke-test",
+  "updatedAt": "2026-03-03T20:17:54.357Z"
+}

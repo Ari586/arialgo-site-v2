@@ -4,7 +4,7 @@ import { useMarketStore } from '../store/marketStore';
 import { calculateAllIndicators } from '../utils/indicators';
 
 const fetchHistory = async (symbol: string, timeframe: string) => {
-    const res = await fetch(`/api/history?symbol=${encodeURIComponent(symbol)}&interval=${encodeURIComponent(timeframe)}`);
+    const res = await fetch(`/api/history?symbol=${encodeURIComponent(symbol)}&interval=${encodeURIComponent(timeframe)}&outputsize=1000`);
     const data = await res.json();
     return data.data || [];
 };
@@ -47,59 +47,59 @@ export default function TrendMetersPanel() {
     ] : [];
 
     return (
-        <div className="trend-panel" style={{ display: 'flex', gap: '16px', flexDirection: 'column' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                <div style={{ flex: 1, textAlign: 'center', padding: '12px', background: 'var(--buy-bg)', borderRadius: '8px', border: '1px solid var(--buy)' }}>
-                    <div style={{ fontSize: '11px', color: 'var(--buy)', fontWeight: 'bold', marginBottom: '4px' }}>ACHAT</div>
-                    <div style={{ fontSize: '24px', fontWeight: 900, color: 'var(--text-main)' }}>{trend.bullishPct}%</div>
-                    <div style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>{trend.bullishCount} Signaux</div>
+        <div className="trend-panel" style={{ display: 'flex', gap: '10px', flexDirection: 'column' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                <div style={{ flex: 1, textAlign: 'center', padding: '9px', background: 'var(--buy-bg)', borderRadius: '10px', border: '1px solid var(--buy)' }}>
+                    <div style={{ fontSize: '10px', color: 'var(--buy)', fontWeight: 'bold', marginBottom: '3px' }}>ACHAT</div>
+                    <div style={{ fontSize: '20px', fontWeight: 900, color: 'var(--text-main)', lineHeight: 1.05 }}>{trend.bullishPct}%</div>
+                    <div style={{ fontSize: '9px', color: 'var(--text-secondary)' }}>{trend.bullishCount} Signaux</div>
                 </div>
-                <div style={{ width: '16px' }} />
-                <div style={{ flex: 1, textAlign: 'center', padding: '12px', background: 'var(--sell-bg)', borderRadius: '8px', border: '1px solid var(--sell)' }}>
-                    <div style={{ fontSize: '11px', color: 'var(--sell)', fontWeight: 'bold', marginBottom: '4px' }}>VENTE</div>
-                    <div style={{ fontSize: '24px', fontWeight: 900, color: 'var(--text-main)' }}>{trend.bearishPct}%</div>
-                    <div style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>{trend.bearishCount} Signaux</div>
+                <div style={{ width: '10px' }} />
+                <div style={{ flex: 1, textAlign: 'center', padding: '9px', background: 'var(--sell-bg)', borderRadius: '10px', border: '1px solid var(--sell)' }}>
+                    <div style={{ fontSize: '10px', color: 'var(--sell)', fontWeight: 'bold', marginBottom: '3px' }}>VENTE</div>
+                    <div style={{ fontSize: '20px', fontWeight: 900, color: 'var(--text-main)', lineHeight: 1.05 }}>{trend.bearishPct}%</div>
+                    <div style={{ fontSize: '9px', color: 'var(--text-secondary)' }}>{trend.bearishCount} Signaux</div>
                 </div>
             </div>
 
             {proCombo && (
-                <div style={{ background: 'var(--bg-tertiary)', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '8px' }}>
-                        <div style={{ fontSize: '11px', fontWeight: 'bold', color: 'var(--text-secondary)' }}>COMBO PRO CONFLUENCE :</div>
-                        <div style={{ fontSize: '12px', fontWeight: 'bold', color: proCombo.signal === 'BUY' ? 'var(--buy)' : proCombo.signal === 'SELL' ? 'var(--sell)' : 'var(--gold)' }}>
+                <div style={{ background: 'var(--bg-tertiary)', padding: '9px', borderRadius: '10px', border: '1px solid var(--border)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '6px' }}>
+                        <div style={{ fontSize: '10px', fontWeight: 'bold', color: 'var(--text-secondary)' }}>COMBO PRO CONFLUENCE :</div>
+                        <div style={{ fontSize: '11px', fontWeight: 'bold', color: proCombo.signal === 'BUY' ? 'var(--buy)' : proCombo.signal === 'SELL' ? 'var(--sell)' : 'var(--gold)' }}>
                             {proCombo.signal} {proCombo.score}
                         </div>
                     </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
                         {comboBlocks.map((block: any) => (
-                            <div key={block.key} style={{ border: '1px solid var(--border)', borderRadius: '6px', padding: '8px', background: 'rgba(255,255,255,0.02)' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', marginBottom: '4px' }}>
+                            <div key={block.key} style={{ border: '1px solid var(--border)', borderRadius: '8px', padding: '6px', background: 'rgba(255,255,255,0.02)' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9px', marginBottom: '3px' }}>
                                     <span style={{ color: 'var(--text-secondary)', fontWeight: 'bold' }}>{block.label}</span>
                                     <span style={{ color: block.data.signal === 'BUY' ? 'var(--buy)' : block.data.signal === 'SELL' ? 'var(--sell)' : 'var(--gold)', fontWeight: 'bold' }}>
                                         {block.data.signal}
                                     </span>
                                 </div>
-                                <div style={{ fontSize: '15px', fontWeight: 800, fontFamily: 'var(--font-mono)' }}>{block.data.score}</div>
+                                <div style={{ fontSize: '13px', fontWeight: 800, fontFamily: 'var(--font-mono)' }}>{block.data.score}</div>
                             </div>
                         ))}
                     </div>
                 </div>
             )}
 
-            <div style={{ background: 'var(--bg-tertiary)', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)' }}>
-                <div style={{ fontSize: '11px', fontWeight: 'bold', color: 'var(--text-secondary)', marginBottom: '8px' }}>FACTEURS CLÉS :</div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    {trend.reasons.slice(0, 5).map((reason: string, i: number) => (
-                        <div key={i} style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <div style={{ background: 'var(--bg-tertiary)', padding: '9px', borderRadius: '10px', border: '1px solid var(--border)' }}>
+                <div style={{ fontSize: '10px', fontWeight: 'bold', color: 'var(--text-secondary)', marginBottom: '6px' }}>FACTEURS CLÉS :</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                    {trend.reasons.slice(0, 3).map((reason: string, i: number) => (
+                        <div key={i} style={{ fontSize: '11px', display: 'flex', alignItems: 'center', gap: '5px' }}>
                             <span style={{ color: reason.includes('↑') ? 'var(--buy)' : 'var(--sell)' }}>
                                 {reason.includes('↑') ? '↗' : '↘'}
                             </span>
                             {reason.replace('↑', '').replace('↓', '')}
                         </div>
                     ))}
-                    {trend.reasons.length > 5 && (
-                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px', fontStyle: 'italic' }}>
-                            + {trend.reasons.length - 5} autres facteurs
+                    {trend.reasons.length > 3 && (
+                        <div style={{ fontSize: '10px', color: 'var(--text-secondary)', marginTop: '3px', fontStyle: 'italic' }}>
+                            + {trend.reasons.length - 3} autres facteurs
                         </div>
                     )}
                 </div>

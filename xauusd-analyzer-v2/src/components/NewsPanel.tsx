@@ -8,6 +8,15 @@ const fetchNews = async (symbol: string) => {
     return data;
 };
 
+const sourceIcon = (source: string) => {
+    const s = String(source || '').toLowerCase();
+    if (s.includes('reuters')) return '◉';
+    if (s.includes('bloomberg')) return '◆';
+    if (s.includes('market')) return '◈';
+    if (s.includes('coin') || s.includes('crypto')) return '⬢';
+    return '●';
+};
+
 export default function NewsPanel() {
     const currentSymbol = useMarketStore(state => state.currentSymbol);
     const [isGlobal, setIsGlobal] = React.useState(false);
@@ -66,26 +75,16 @@ export default function NewsPanel() {
 
     return (
         <div className="news-panel">
-            <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+            <div className="news-toggle-row">
                 <button
                     onClick={() => setIsGlobal(false)}
-                    style={{
-                        flex: 1, padding: '6px', fontSize: '11px', fontWeight: 'bold',
-                        background: !isGlobal ? 'var(--gold)' : 'rgba(255,255,255,0.05)',
-                        color: !isGlobal ? 'black' : 'var(--text-secondary)',
-                        border: 'none', borderRadius: '4px', cursor: 'pointer'
-                    }}
+                    className={`news-toggle-btn ${!isGlobal ? 'active' : ''}`}
                 >
                     FOCUS {currentSymbol.split('/')[0]}
                 </button>
                 <button
                     onClick={() => setIsGlobal(true)}
-                    style={{
-                        flex: 1, padding: '6px', fontSize: '11px', fontWeight: 'bold',
-                        background: isGlobal ? 'var(--gold)' : 'rgba(255,255,255,0.05)',
-                        color: isGlobal ? 'black' : 'var(--text-secondary)',
-                        border: 'none', borderRadius: '4px', cursor: 'pointer'
-                    }}
+                    className={`news-toggle-btn ${isGlobal ? 'active' : ''}`}
                 >
                     MARKET GLOBAL
                 </button>
@@ -101,13 +100,14 @@ export default function NewsPanel() {
             <div className="news-list">
                 {articles.map((article: any, i: number) => (
                     <a key={i} href={article.link || article.url} target="_blank" rel="noopener noreferrer" className="news-item">
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
+                        <div className="news-headline-row">
                             <div className="news-title">{article.title}</div>
-                            {article.impact === 'HIGH' && <span style={{ background: '#ff5252', color: 'white', fontSize: '8px', padding: '2px 4px', borderRadius: '2px', fontWeight: 'bold' }}>HIGH</span>}
+                            {article.impact === 'HIGH' && <span className="news-impact">HIGH</span>}
                         </div>
                         <div className="news-meta">
-                            <span className="news-source" style={{ color: article.sentiment === 'BULLISH' ? 'var(--buy)' : article.sentiment === 'BEARISH' ? 'var(--sell)' : 'var(--text-secondary)' }}>
-                                {article.source || article.publisher}
+                            <span className={`news-source-pill ${article.sentiment === 'BULLISH' ? 'buy' : article.sentiment === 'BEARISH' ? 'sell' : 'neutral'}`}>
+                                <span className="news-source-icon">{sourceIcon(article.source || article.publisher)}</span>
+                                <span className="news-source">{article.source || article.publisher}</span>
                             </span>
                             <span className="news-time">{formatNewsTime(article)}</span>
                         </div>
@@ -117,6 +117,30 @@ export default function NewsPanel() {
 
             <style>{`
                 .news-panel { padding: 4px; }
+                .news-toggle-row {
+                    display: flex;
+                    gap: 8px;
+                    margin-bottom: 12px;
+                }
+                .news-toggle-btn {
+                    flex: 1;
+                    padding: 7px 8px;
+                    font-size: 10px;
+                    font-weight: 800;
+                    letter-spacing: 0.3px;
+                    color: var(--text-secondary);
+                    border: 1px solid var(--border);
+                    background: color-mix(in srgb, var(--bg-tertiary) 88%, transparent 12%);
+                    border-radius: 8px;
+                    cursor: pointer;
+                    transition: all 0.2s ease;
+                }
+                .news-toggle-btn.active {
+                    color: var(--text-main);
+                    border-color: color-mix(in srgb, var(--accent) 62%, transparent 38%);
+                    background: color-mix(in srgb, var(--accent-soft) 72%, transparent 28%);
+                    box-shadow: 0 0 14px color-mix(in srgb, var(--accent) 28%, transparent 72%);
+                }
                 .news-sentiment {
                     display: flex;
                     justify-content: space-between;
@@ -148,12 +172,19 @@ export default function NewsPanel() {
                     background: var(--bg-tertiary);
                     border-radius: 6px;
                     text-decoration: none;
-                    border: 1px solid transparent;
-                    transition: border-color 0.2s;
+                    border: 1px solid var(--border);
+                    transition: border-color 0.2s, transform 0.2s, box-shadow 0.2s;
                 }
                 .news-item:hover {
-                    border-color: rgba(255,255,255,0.1);
-                    background: rgba(255,255,255,0.03);
+                    border-color: color-mix(in srgb, var(--accent) 36%, transparent 64%);
+                    transform: translateY(-1px);
+                    box-shadow: 0 8px 16px -12px rgba(0, 0, 0, 0.65);
+                }
+                .news-headline-row {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: flex-start;
+                    gap: 8px;
                 }
                 .news-title {
                     font-size: 13px;
@@ -161,11 +192,62 @@ export default function NewsPanel() {
                     line-height: 1.4;
                     margin-bottom: 6px;
                 }
+                .news-impact {
+                    background: var(--sell);
+                    color: #fff;
+                    font-size: 8px;
+                    padding: 2px 5px;
+                    border-radius: 4px;
+                    font-weight: 800;
+                    letter-spacing: 0.3px;
+                }
                 .news-meta {
                     display: flex;
                     justify-content: space-between;
+                    align-items: center;
+                    gap: 8px;
                     font-size: 11px;
                     color: var(--text-secondary);
+                }
+                .news-source-pill {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 6px;
+                    border: 1px solid var(--border);
+                    border-radius: 999px;
+                    padding: 2px 8px;
+                    font-size: 10px;
+                    font-weight: 700;
+                }
+                .news-source-pill.buy {
+                    color: var(--buy);
+                    border-color: color-mix(in srgb, var(--buy) 46%, transparent 54%);
+                    background: color-mix(in srgb, var(--buy-bg) 80%, transparent 20%);
+                }
+                .news-source-pill.sell {
+                    color: var(--sell);
+                    border-color: color-mix(in srgb, var(--sell) 46%, transparent 54%);
+                    background: color-mix(in srgb, var(--sell-bg) 80%, transparent 20%);
+                }
+                .news-source-pill.neutral {
+                    color: var(--text-secondary);
+                    background: color-mix(in srgb, var(--bg-secondary) 86%, transparent 14%);
+                }
+                .news-source-icon {
+                    font-size: 10px;
+                    line-height: 1;
+                }
+                :root[data-theme='cyber'] .news-item {
+                    background:
+                        linear-gradient(135deg, rgba(139, 92, 246, 0.10), transparent 52%),
+                        linear-gradient(320deg, rgba(0, 229, 255, 0.08), transparent 56%),
+                        color-mix(in srgb, var(--bg-tertiary) 88%, transparent 12%);
+                    border-color: color-mix(in srgb, var(--accent) 34%, var(--border) 66%);
+                }
+                :root[data-theme='cyber'] .news-item:hover {
+                    box-shadow:
+                        0 0 0 1px color-mix(in srgb, var(--accent) 26%, transparent 74%),
+                        0 0 20px color-mix(in srgb, var(--accent) 24%, transparent 76%);
                 }
             `}</style>
         </div>

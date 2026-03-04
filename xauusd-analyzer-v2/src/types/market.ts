@@ -21,10 +21,23 @@ export interface OrderbookEntry {
 }
 
 export interface OrderbookData {
+    symbol?: string;
     bids: OrderbookEntry[];
     asks: OrderbookEntry[];
     ratio: number;
     pressure: 'BUY' | 'SELL' | 'NEUTRAL';
+    source?: string;
+    depthLevels?: number;
+    timestamp?: number;
+}
+
+export interface PriceMetaData {
+    symbol?: string;
+    source?: string;
+    timestamp?: number;
+    bid?: number;
+    ask?: number;
+    spread?: number;
 }
 
 export interface SignalRecord {
@@ -45,6 +58,7 @@ export interface MarketState {
     currentTimeframe: string;
     instruments: string[];
     prices: Record<string, number>;
+    priceMeta: Record<string, PriceMetaData>;
     orderbook: OrderbookData | null;
     signalHistory: SignalRecord[];
     selectedAI: string;
@@ -52,7 +66,7 @@ export interface MarketState {
     setSymbol: (symbol: string) => void;
     setTimeframe: (timeframe: string) => void;
     setInstruments: (instruments: string[]) => void;
-    updatePrice: (symbol: string, price: number) => void;
+    updatePrice: (symbol: string, price: number, meta?: PriceMetaData) => void;
     updateOrderbook: (data: OrderbookData) => void;
     addSignal: (signal: SignalRecord) => void;
     setSelectedAI: (id: string) => void;

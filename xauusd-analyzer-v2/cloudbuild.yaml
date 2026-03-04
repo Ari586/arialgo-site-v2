@@ -1,0 +1,5 @@
+steps:
+- name: 'gcr.io/cloud-builders/docker'
+  args: ['build', '-t', 'gcr.io/trading-488121/xauusd-analyzer-v2', '-f', 'Dockerfile.prod', '.']
+images:
+- 'gcr.io/trading-488121/xauusd-analyzer-v2'

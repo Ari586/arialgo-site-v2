@@ -10,8 +10,8 @@ RUN npm install
 # Bundle app source
 COPY . .
 
-# Build the Vite frontend application
-RUN npm run build
+# Dist is synced from xauusd-analyzer-v2 before deployment.
+# Keep this image build deterministic by shipping prebuilt frontend assets.
 
 # Expose the API and UI port
 EXPOSE 8080

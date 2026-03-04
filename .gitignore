@@ -22,3 +22,7 @@ xauusd-analyzer/debug*.txt
 **/yarn-debug.log*
 **/yarn-error.log*
 *.pid
+
+# Python cache / bytecode
+**/__pycache__/
+**/*.py[cod]
